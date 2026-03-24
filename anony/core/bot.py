@@ -1,55 +1,62 @@
-# Copyright (c) 2025 AnonymousX1025
-# Licensed under the MIT License.
-# This file is part of AnonXMusic
+from pyrogram import Client, enums, filters, types
+
+from bot.config import config
+from bot import logger
 
 
-import pyrogram
-
-from anony import config, logger
-
-
-class Bot(pyrogram.Client):
-    def __init__(self):
+class BikaBot(Client):
+    def __init__(self) -> None:
         super().__init__(
-            name="Anony",
+            name="BikaMusicBot",
             api_id=config.API_ID,
             api_hash=config.API_HASH,
             bot_token=config.BOT_TOKEN,
-            parse_mode=pyrogram.enums.ParseMode.HTML,
+            parse_mode=enums.ParseMode.HTML,
             max_concurrent_transmissions=7,
-            link_preview_options=pyrogram.types.LinkPreviewOptions(is_disabled=True),
+            link_preview_options=types.LinkPreviewOptions(is_disabled=True),
         )
-        self.owner = config.OWNER_ID
-        self.logger = config.LOGGER_ID
-        self.bl_users = pyrogram.filters.user()
-        self.sudoers = pyrogram.filters.user(self.owner)
 
-    async def boot(self):
-        """
-        Starts the bot and performs initial setup.
+        self.owner_id = config.OWNER_ID
+        self.logger_id = config.LOGGER_ID
 
-        Raises:
-            SystemExit: If the bot fails to access the log group or is not an administrator in the logger group.
-        """
+        self.bl_users = filters.user()
+        self.sudoers = filters.user(self.owner_id) if self.owner_id else filters.user()
+
+        self.id: int | None = None
+        self.name: str | None = None
+        self.username: str | None = None
+        self.mention: str | None = None
+
+    async def boot(self) -> None:
         await super().start()
-        self.id = self.me.id
-        self.name = self.me.first_name
-        self.username = self.me.username
-        self.mention = self.me.mention
+
+        me = await self.get_me()
+        self.id = me.id
+        self.name = me.first_name
+        self.username = me.username
+        self.mention = me.mention
+
+        if not self.logger_id:
+            logger.warning("LOGGER_ID is not configured. Skipping log group check.")
+            logger.info("Bot started as @%s", self.username or "unknown")
+            return
 
         try:
-            await self.send_message(self.logger, "Bot Started")
-            get = await self.get_chat_member(self.logger, self.id)
-        except Exception as ex:
-            raise SystemExit(f"Bot has failed to access the log group: {self.logger}\nReason: {ex}")
+            await self.send_message(self.logger_id, "✅ Bika Music Bot started successfully.")
+            member = await self.get_chat_member(self.logger_id, self.id)
+        except Exception as exc:
+            raise SystemExit(
+                f"Bot could not access LOGGER_ID {self.logger_id}.\nReason: {exc}"
+            ) from exc
 
-        if get.status != pyrogram.enums.ChatMemberStatus.ADMINISTRATOR:
-            raise SystemExit("Please promote the bot as an admin in logger group.")
-        logger.info(f"Bot started as @{self.username}")
+        if member.status not in (
+            enums.ChatMemberStatus.ADMINISTRATOR,
+            enums.ChatMemberStatus.OWNER,
+        ):
+            raise SystemExit("Please promote the bot as admin in the logger chat.")
 
-    async def exit(self):
-        """
-        Asynchronously stops the bot.
-        """
+        logger.info("Bot started as @%s", self.username or "unknown")
+
+    async def shutdown(self) -> None:
         await super().stop()
         logger.info("Bot stopped.")
